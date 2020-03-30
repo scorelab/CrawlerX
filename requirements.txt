@@ -1,0 +1,13 @@
+Django
+elasticsearch
+elasticsearch-dsl
+celery
+django-celery-results
+django-cors-headers
+django-post-request-task
+redis
+channels
+channels-redis
+django-cors-headers
+djangorestframework
+djongo

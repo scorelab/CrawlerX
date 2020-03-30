@@ -1,0 +1,95 @@
+version: '3'
+services:
+  web:
+    image: crawlerX:latest
+    container_name : django
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/CrawlerX
+    ports:
+      - "8000:8000"
+    expose:
+      - "8000"
+    depends_on:
+      - populate_and_migration
+  populate_and_migration:
+    image: crawlerX:latest
+    container_name: migrations
+    command: >
+       sh -c " python manage.py makemigrations && python manage.py migrate"
+    volumes:
+      - .:/CrawlerX
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.0
+    container_name: elasticsearch
+    environment:
+      - xpack.security.enabled=false
+      - discovery.type=single-node
+      - network.bind_host=0.0.0.0
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+      - 9300:9300
+  build_indexers:
+    image: crawlerX:latest
+    container_name: elastic_indexer_build
+    environment:
+      - ES_HOST=elasticsearch
+      - ES_PORT=9200
+    depends_on:
+      - elasticsearch
+      - populate_and_migration
+    command: >
+      sh -c "dos2unix wait-for-it.sh && ./wait-for-it.sh -t 0 elasticsearch:9200 -- python manage.py index_questions"
+    volumes:
+      - .:/CrawlerX
+  mongodb_container:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb_data_container:/data/db
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.6.1
+    volumes:
+      - ./kibana.yml:/usr/share/kibana/config/kibana.yml
+  flower:
+    image: mher/flower
+    command: ["flower", "--broker=redis://redis:6379/0", "--port=8888"]
+    ports:
+      - 8888:8888
+  redis:
+    container_name: redis_server
+    image: 'redis:3.0-alpine'
+    command: redis-server
+    volumes:
+     - .:/crawlerX
+    ports:
+      - '6380:6379'
+  celery:
+    build: .
+    container_name: crawlerX:latest
+    image : crawlerX:latest
+    command: celery -A crawlerX worker -l info
+    volumes:
+      - .:/crawlerX
+volumes:
+  mongodb_data_container:
+  elasticsearch-data:
+    driver: local
